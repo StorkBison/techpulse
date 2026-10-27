@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TechPulse Demo Slides</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  :root {
+    --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #2f2f2c;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c84; --accent: #3987e5; --hot: #d95926; --good: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 22px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; }
+  section { display: none; height: 100vh; padding: 64px 96px 150px; flex-direction: column; justify-content: center; gap: 24px; }
+  section.active { display: flex; animation: in .5s ease; }
+  @keyframes in { from { opacity: 0; transform: translateY(12px); } }
+  h1 { font-size: 72px; margin: 0; letter-spacing: -0.02em; }
+  h2 { font-size: 44px; margin: 0; letter-spacing: -0.01em; }
+  .kicker { color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .12em; font-size: 18px; }
+  .lede { color: var(--text-2); font-size: 28px; max-width: 1100px; margin: 0; }
+  .logo { color: var(--accent); }
+  .stack { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .stack span { padding: 8px 16px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 20px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+  ul.points { margin: 0; padding-left: 26px; color: var(--text-2); }
+  ul.points li { margin: 8px 0; }
+  ul.points b { color: var(--text); }
+  pre { margin: 0; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+  pre code.hljs { font: 17px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; padding: 20px 24px; background: #0d1117; }
+  .file { font: 15px ui-monospace, Consolas, monospace; color: var(--muted); margin-bottom: -14px; }
+  .term { background: #0d1117; border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px;
+    font: 15px/1.45 ui-monospace, Consolas, monospace; color: #c9d1d9; white-space: pre-wrap; max-height: 560px; overflow: hidden; }
+  .term .pass { color: var(--good); }
+  /* Architecture diagram */
+  .arch { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; align-items: stretch; margin-top: 8px; }
+  .node { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; position: relative; }
+  .node .t { font-weight: 700; font-size: 22px; }
+  .node .d { color: var(--text-2); font-size: 17px; margin-top: 6px; }
+  .node .tech { color: var(--accent); font-size: 15px; font-weight: 700; margin-top: 10px; }
+  .node:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 22px; }
+  .under { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+  .under .node::after { display: none; }
+  .big-num { font-size: 64px; font-weight: 800; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<section id="title">
+  <div class="kicker">Automation portfolio demo</div>
+  <h1><span class="logo">◆</span> TechPulse</h1>
+  <p class="lede">An AI-curated tech news monitor. It scrapes Hacker News on a schedule, uses Claude to classify, score and summarise every story, stores it in PostgreSQL, and alerts you only when something truly matters.</p>
+  <div class="stack">
+    <span>Python 3.12</span><span>Playwright</span><span>FastAPI</span><span>Claude API</span>
+    <span>PostgreSQL</span><span>SQLAlchemy 2</span><span>APScheduler</span><span>Docker</span><span>GitHub Actions</span>
+  </div>
+</section>
+
+<section id="arch">
+  <div class="kicker">Architecture</div>
+  <h2>One pipeline, five stages</h2>
+  <div class="arch">
+    <div class="node"><div class="t">Schedule</div><div class="d">Interval trigger, or on-demand via API. One run at a time.</div><div class="tech">APScheduler · asyncio lock</div></div>
+    <div class="node"><div class="t">Scrape</div><div class="d">Headless browser extracts rank, title, points, comments.</div><div class="tech">Playwright · tenacity retries</div></div>
+    <div class="node"><div class="t">Store</div><div class="d">Idempotent upsert. New stories inserted, metrics refreshed.</div><div class="tech">SQLAlchemy · PostgreSQL</div></div>
+    <div class="node"><div class="t">Enrich</div><div class="d">Batch classify, score 1–10 and summarise against your interests.</div><div class="tech">Claude · structured outputs</div></div>
+    <div class="node"><div class="t">Alert</div><div class="d">Relevance ≥ threshold goes to Slack, exactly once.</div><div class="tech">Slack webhook · httpx</div></div>
+  </div>
+  <div class="under">
+    <div class="node"><div class="t">REST API</div><div class="d">Stories, runs, stats, trigger. OpenAPI docs for free.</div><div class="tech">FastAPI · Pydantic</div></div>
+    <div class="node"><div class="t">Dashboard</div><div class="d">Live KPIs, filters, run history. Vanilla JS on the public API.</div><div class="tech">Jinja · fetch</div></div>
+    <div class="node"><div class="t">Ops</div><div class="d">Container + Postgres via Compose. CI runs lint, tests, Docker smoke test.</div><div class="tech">Docker · GitHub Actions</div></div>
+  </div>
+</section>
+
+<section id="code-scraper">
+  <div class="kicker">Code · Scraping</div>
+  <h2>Resilient browser automation</h2>
+  <div class="cols">
+    <div>
+      <div class="file">techpulse/scraper.py</div>
+      <pre><code class="language-python">@retry(
+    retry=retry_if_exception_type(PlaywrightError),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+)
+async def _scrape_page(self, page, n):
+    await page.goto(f"{HN_BASE}/news?p={n}",
+                    wait_until="domcontentloaded")
+    await page.wait_for_selector("tr.athing")
+    return await extract_stories(page)</code></pre>
+    </div>
+    <ul class="points">
+      <li><b>Extraction runs in the page</b> - one JS pass maps each story row to a typed record.</li>
+      <li><b>Exponential-backoff retries</b> on timeouts and network errors.</li>
+      <li><b>Blocks images, fonts and CSS</b> to cut bandwidth and time.</li>
+      <li><b>Same code path offline:</b> a saved HTML fixture powers tests and CI.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="code-ai">
+  <div class="kicker">Code · AI enrichment</div>
+  <h2>Claude with schema-validated output</h2>
+  <div class="cols">
+    <div>
+      <div class="file">techpulse/enricher.py</div>
+      <pre><code class="language-python">class StoryInsight(BaseModel):
+    hn_id: int
+    category: Category          # Literal[...] enum
+    relevance: int = Field(ge=1, le=10)
+    summary: str
+    tags: list[str]
+
+response = self.client.beta.messages.parse(
+    model="claude-opus-5-5",
+    system=SYSTEM_PROMPT.format(interests=...),
+    messages=[{"role": "user", "content": payload}],
+    output_format=InsightBatch,      # Pydantic schema
+    output_config={"effort": "low"},
+    betas=["server-side-fallback-2026-07-01"],
+    fallbacks="default",
+)</code></pre>
+    </div>
+    <ul class="points">
+      <li><b>Structured outputs:</b> the response is parsed straight into Pydantic models. No regex, no brittle JSON parsing.</li>
+      <li><b>One request per batch of 30</b> stories keeps cost and latency low.</li>
+      <li><b>Guards:</b> refusal and truncation checks, hallucinated IDs filtered out.</li>
+      <li><b>Offline fallback:</b> a deterministic keyword enricher runs when no API key is set.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="code-pipeline">
+  <div class="kicker">Code · Reliability</div>
+  <h2>Built to run unattended</h2>
+  <div class="cols">
+    <div>
+      <div class="file">techpulse/pipeline.py</div>
+      <pre><code class="language-python">async def run(self, trigger: str) -> Run:
+    if self._lock.locked():
+        raise PipelineBusyError("already running")
+    async with self._lock:
+        return await self._run(trigger)
+
+# inside _run():
+scraped = await self.scrape()
+new = self._upsert(db, scraped); db.commit()
+pending = select(Story).where(Story.relevance.is_(None))
+run.enriched = await self._enrich(pending)
+run.alerts = self._alert(db)   # alerted=False only</code></pre>
+    </div>
+    <ul class="points">
+      <li><b>No overlapping runs</b> - scheduler and API share one lock.</li>
+      <li><b>Idempotent:</b> re-runs refresh points and comments without duplicates.</li>
+      <li><b>Self-healing:</b> if the AI step fails, stories stay pending and are retried next run.</li>
+      <li><b>Every run is audited</b> - counts, enricher, duration and error.</li>
+      <li><b>Blocking API calls</b> run off the event loop.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="tests">
+  <div class="kicker">Quality</div>
+  <h2>Tested, linted, containerised</h2>
+  <div class="cols">
+    <div class="term" id="pytest-output">$ pytest -v</div>
+    <ul class="points">
+      <li><b>Unit tests</b> for the enrichers, with a mocked Claude client.</li>
+      <li><b>Pipeline tests:</b> idempotency, failure recording, retry-after-failure, concurrency.</li>
+      <li><b>API tests</b> through FastAPI's TestClient.</li>
+      <li><b>Real browser test</b> - Playwright against a saved HN page.</li>
+      <li><b>CI:</b> ruff → pytest → Docker build → container smoke test.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="docker">
+  <div class="kicker">Deploy</div>
+  <h2>One command to production-like</h2>
+  <div class="cols">
+    <div>
+      <div class="file">terminal</div>
+      <pre><code class="language-bash">cp .env.example .env    # add ANTHROPIC_API_KEY, SLACK_WEBHOOK_URL
+docker compose up --build
+
+# app  -> http://localhost:8000      (dashboard)
+#      -> http://localhost:8000/docs (OpenAPI)
+# db   -> PostgreSQL 16 with health check</code></pre>
+      <div class="file" style="margin-top:28px">docker-compose.yml</div>
+      <pre><code class="language-yaml">app:
+  build: .
+  environment:
+    DATABASE_URL: postgresql+psycopg://techpulse:...@db/techpulse
+  depends_on:
+    db: { condition: service_healthy }</code></pre>
+    </div>
+    <ul class="points">
+      <li><b>Non-root container</b> with a HEALTHCHECK.</li>
+      <li><b>12-factor config</b> - everything comes from environment variables, validated by Pydantic.</li>
+      <li><b>SQLite for dev</b>, PostgreSQL in Compose. Same code, swapped by URL.</li>
+      <li><b>Chromium baked into the image</b>, so it scrapes anywhere.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="outro">
+  <div class="kicker">Summary</div>
+  <h1><span class="logo">◆</span> TechPulse</h1>
+  <p class="lede">Scheduled browser automation, LLM enrichment with typed outputs, a clean REST API, a live dashboard, and a tested, containerised delivery pipeline - in about a thousand lines of Python.</p>
+  <div class="stack">
+    <span>Next: more sources (Reddit, RSS, GitHub trending)</span><span>Daily digest email</span><span>Per-user interests</span><span>Embeddings for dedup</span>
+  </div>
+</section>
+
+<script>
+  hljs.highlightAll();
+  function show() {
+    const id = location.hash.slice(1) || "title";
+    document.querySelectorAll("section").forEach((s) => s.classList.toggle("active", s.id === id));
+  }
+  addEventListener("hashchange", show);
+  show();
+</script>
+</body>
+</html>

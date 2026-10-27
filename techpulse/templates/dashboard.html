@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TechPulse</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◆</span>
+      <div>
+        <h1>TechPulse</h1>
+        <p class="sub">AI-curated tech news · scrape → enrich → alert</p>
+      </div>
+    </div>
+    <div class="actions">
+      <span id="pipeline-status" class="pill" data-state="idle">Idle</span>
+      <button id="run-btn" class="btn primary" type="button">▶ Run pipeline now</button>
+      <a class="btn" href="/docs" target="_blank" rel="noopener">API docs</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="meta" id="meta" aria-label="Configuration"></section>
+
+    <section class="kpis" aria-label="Key metrics">
+      <div class="kpi"><span class="label">Stories tracked</span><span class="value" id="k-total">–</span></div>
+      <div class="kpi"><span class="label">AI-enriched</span><span class="value" id="k-enriched">–</span></div>
+      <div class="kpi"><span class="label">Avg relevance</span><span class="value" id="k-avg">–</span></div>
+      <div class="kpi"><span class="label">Alerts sent</span><span class="value" id="k-alerts">–</span></div>
+      <div class="kpi"><span class="label">Next scheduled run</span><span class="value small" id="k-next">–</span></div>
+    </section>
+
+    <div class="grid">
+      <section class="card" id="stories-card">
+        <div class="card-head">
+          <h2>Stories</h2>
+          <div class="filters">
+            <input id="f-q" type="search" placeholder="Search titles & summaries…" aria-label="Search">
+            <select id="f-category" aria-label="Category"><option value="">All categories</option></select>
+            <select id="f-min" aria-label="Minimum relevance">
+              <option value="1">Any relevance</option>
+              <option value="5">Relevance ≥ 5</option>
+              <option value="7">Relevance ≥ 7</option>
+              <option value="8">Relevance ≥ 8</option>
+            </select>
+            <select id="f-sort" aria-label="Sort">
+              <option value="relevance">Sort: relevance</option>
+              <option value="points">Sort: points</option>
+              <option value="recent">Sort: newest</option>
+            </select>
+          </div>
+        </div>
+        <ol id="stories" class="stories"></ol>
+        <p id="stories-empty" class="empty" hidden>No stories yet - press <b>Run pipeline now</b>.</p>
+      </section>
+
+      <aside class="side">
+        <section class="card">
+          <h2>Stories by category</h2>
+          <div id="cat-chart" class="hbars" role="img" aria-label="Stories by category"></div>
+        </section>
+        <section class="card">
+          <h2>Recent runs</h2>
+          <table class="runs">
+            <thead><tr><th>#</th><th>Status</th><th>Trigger</th><th class="num">Scraped</th><th class="num">New</th><th class="num">Alerts</th><th class="num">Time</th></tr></thead>
+            <tbody id="runs"></tbody>
+          </table>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <footer>TechPulse v{{ version }} · FastAPI · Playwright · Claude · PostgreSQL · APScheduler</footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>
