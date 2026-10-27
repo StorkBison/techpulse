@@ -11,7 +11,7 @@ WORKDIR /app
 # Dependencies first for layer caching
 COPY pyproject.toml README.md ./
 COPY techpulse/__init__.py techpulse/__init__.py
-RUN pip install . && python -m playwright install --with-deps chromium \
+RUN pip install ".[browser]" && python -m playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
 COPY techpulse ./techpulse

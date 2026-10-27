@@ -61,6 +61,8 @@ class Stats(BaseModel):
     pipeline_busy: bool
     enricher: str
     scraper_source: str
+    schedule_label: str | None
+    storage: str
     alert_channel: str
     alert_threshold: int
 

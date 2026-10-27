@@ -18,7 +18,7 @@ flowchart LR
     A[POST /api/runs] --> P
     subgraph P[Pipeline · one run at a time]
       direction LR
-      SC[Scrape<br/>Playwright + retries] --> ST[Upsert<br/>SQLAlchemy]
+      SC[Scrape<br/>Playwright or httpx + retries] --> ST[Upsert<br/>SQLAlchemy]
       ST --> EN[Enrich<br/>Claude structured outputs]
       EN --> AL[Alert<br/>Slack webhook]
     end
@@ -56,13 +56,29 @@ Open **http://localhost:8000** for the dashboard, or **http://localhost:8000/doc
 ### Local (SQLite)
 ```bash
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+pip install -e ".[dev,browser]"
 python -m playwright install chromium                 # or set BROWSER_CHANNEL=chrome
 cp .env.example .env
 
 techpulse run-once        # one pipeline pass, prints a summary
 techpulse serve           # API + dashboard + scheduler on :8000
 ```
+
+### Vercel (serverless)
+
+The same code runs as a Vercel Function. When `VERCEL=1` is set, the app adapts automatically:
+
+| Concern | Docker / local | Vercel |
+|---|---|---|
+| Scraper | Playwright (headless Chromium) | `httpx` + HTML parser. Same output; both are tested against the same fixture. |
+| Scheduling | In-process APScheduler | Vercel Cron (daily on Hobby), plus an optional GitHub Actions workflow every 2 h, both calling `GET /api/cron` with `Authorization: Bearer $CRON_SECRET` |
+| "Run now" | Background task (202) | Runs inline, with `MANUAL_RUN_COOLDOWN_SECONDS` to prevent abuse |
+| Database | SQLite / Compose Postgres | **Neon Postgres** via `DATABASE_URL` (falls back to per-instance `/tmp` SQLite) |
+
+1. Import the GitHub repo at **vercel.com/new** (no build settings needed: `pyproject.toml` sets `[tool.vercel] entrypoint`).
+2. Add a Postgres database: **Storage → Create → Neon**. This injects `DATABASE_URL`; `postgres://` URLs are normalised automatically.
+3. Set environment variables: `CRON_SECRET` (random, ≥16 chars), `MANUAL_RUN_COOLDOWN_SECONDS=300`, and optionally `ANTHROPIC_API_KEY`, `SLACK_WEBHOOK_URL`, `SCRAPER_PAGES=2`, `SCHEDULE_LABEL="Vercel Cron · daily"`.
+4. Optional, for more frequent runs: add the repo secrets `TECHPULSE_URL` and `CRON_SECRET` to enable `.github/workflows/scheduled-run.yml`.
 
 ## Configuration
 
@@ -76,7 +92,10 @@ All settings come from environment variables or `.env`, and Pydantic validates t
 | `ALERT_THRESHOLD` | `8` | Minimum relevance (1–10) that triggers an alert |
 | `SLACK_WEBHOOK_URL` | – | Slack incoming webhook. If unset, alerts go to the log. |
 | `SCHEDULE_ENABLED` / `SCHEDULE_INTERVAL_MINUTES` | `true` / `30` | Scheduler |
+| `SCRAPER_ENGINE` | `auto` | `browser` (Playwright), `http` (httpx), or `auto` (browser if installed and not serverless) |
 | `SCRAPER_SOURCE` | `live` | `live` or `fixture` (offline) |
+| `CRON_SECRET` | – | Required for `GET /api/cron` (sent as `Authorization: Bearer …`) |
+| `MANUAL_RUN_COOLDOWN_SECONDS` | `0` | Minimum gap between runs triggered with the Run button or API |
 | `SCRAPER_PAGES` | `1` | HN pages per run (1–5) |
 | `BROWSER_CHANNEL` | – | Use an installed `chrome`/`msedge` instead of the bundled Chromium |
 | `DATABASE_URL` | `sqlite:///./data/techpulse.db` | Any SQLAlchemy URL. Compose sets PostgreSQL. |
@@ -88,21 +107,23 @@ All settings come from environment variables or `.env`, and Pydantic validates t
 | `GET` | `/api/stories` | Filter with `category`, `min_relevance`, `q`, `sort=relevance\|points\|recent`, `limit` |
 | `GET` | `/api/stories/{hn_id}` | A single story |
 | `GET` | `/api/runs` | Run history |
-| `POST` | `/api/runs` | Trigger a run (`202`, or `409` if one is already running) |
+| `POST` | `/api/runs` | Trigger a run (`202`; `409` if one is already running; `429` during cooldown) |
+| `GET` | `/api/cron` | Scheduled run for cron callers. Requires `Bearer CRON_SECRET`. Returns the finished run. |
 | `GET` | `/api/stats` | KPIs, category breakdown, last and next run, active configuration |
 | `GET` | `/health` | Liveness and DB check |
 
 ## Testing & CI
 
 ```bash
-pytest -v                 # 18 tests
+pytest -v                 # 29 tests
 ruff check . && ruff format --check .
 ```
 
 - **Enricher:** keyword heuristics, plus the Claude request shape, refusal handling and hallucinated-ID filtering, all against a mocked client.
 - **Pipeline:** end-to-end with fakes, idempotency, failure recording, retry after an enrichment failure, and concurrent-run rejection.
 - **API:** every endpoint through `TestClient`, including validation errors.
-- **Scraper:** the real Playwright extraction against `tests/fixtures/hn_front_page.html`.
+- **Scrapers:** both engines against `tests/fixtures/hn_front_page.html`, plus a check that they produce identical results.
+- **Serverless:** `/api/cron` auth, inline runs, cooldown, Postgres URL normalisation, Vercel defaults.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs lint, then tests, then a Docker build, then a smoke test against the running container in fixture mode.
 

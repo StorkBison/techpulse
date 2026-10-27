@@ -1,0 +1,8 @@
+.venv
+.github
+data
+demo
+docs
+tests
+*.mp4
+.env

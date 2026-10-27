@@ -1,11 +1,13 @@
 import asyncio
+import hmac
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,7 +22,7 @@ from techpulse.models import Run, Story
 from techpulse.notifier import Notifier
 from techpulse.pipeline import Pipeline, PipelineBusyError
 from techpulse.schemas import RunOut, Stats, StoryOut, TriggerResponse
-from techpulse.scraper import HackerNewsScraper
+from techpulse.scraper import build_scraper
 
 log = logging.getLogger(__name__)
 HERE = Path(__file__).parent
@@ -28,7 +30,8 @@ JOB_ID = "scrape-hn"
 
 
 def build_pipeline(settings: Settings, db: Database) -> Pipeline:
-    scraper = HackerNewsScraper(
+    scraper = build_scraper(
+        engine=settings.resolved_scraper_engine,
         pages=settings.scraper_pages,
         timeout_ms=settings.scraper_timeout_ms,
         fixture=settings.scraper_fixture_path if settings.scraper_source == "fixture" else None,
@@ -42,6 +45,7 @@ def build_pipeline(settings: Settings, db: Database) -> Pipeline:
         ),
         notifier=Notifier(settings.slack_webhook_url),
         alert_threshold=settings.alert_threshold,
+        scraper_engine=scraper.engine,
     )
 
 
@@ -133,15 +137,58 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         response_model=TriggerResponse,
         status_code=status.HTTP_202_ACCEPTED,
         tags=["runs"],
-        responses={409: {"description": "A run is already in progress"}},
+        responses={
+            409: {"description": "A run is already in progress"},
+            429: {"description": "Cooldown since the last run has not elapsed"},
+        },
     )
-    async def trigger_run():
+    async def trigger_run(session: DB):
         if pipeline.busy:
             raise HTTPException(status.HTTP_409_CONFLICT, "A pipeline run is already in progress")
+        enforce_cooldown(session)
+        if settings.serverless:
+            # No work may outlive the response on serverless, so run inline.
+            run = await pipeline.run("manual")
+            return TriggerResponse(status=run.status, message=f"Run #{run.id} {run.status}")
         task = asyncio.create_task(pipeline.run("manual"))
         background.add(task)
         task.add_done_callback(background.discard)
         return TriggerResponse(status="started", message="Pipeline run started")
+
+    def enforce_cooldown(session: Session) -> None:
+        """Public deployments: stop the Run button from being used to hammer HN / the AI API."""
+        cooldown = settings.manual_run_cooldown_seconds
+        if not cooldown:
+            return
+        last = session.scalar(select(Run.started_at).order_by(Run.id.desc()).limit(1))
+        if last is None:
+            return
+        elapsed = (
+            datetime.now(UTC) - (last if last.tzinfo else last.replace(tzinfo=UTC))
+        ).total_seconds()
+        if elapsed < cooldown:
+            wait = int(cooldown - elapsed) + 1
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"Please wait {wait}s - runs are limited to one every {cooldown}s",
+                headers={"Retry-After": str(wait)},
+            )
+
+    @app.get(
+        "/api/cron",
+        response_model=RunOut,
+        tags=["runs"],
+        responses={401: {"description": "Missing or wrong CRON_SECRET"}},
+    )
+    async def cron_run(authorization: Annotated[str | None, Header()] = None):
+        """Scheduled entrypoint for Vercel Cron / external schedulers (Bearer CRON_SECRET)."""
+        expected = f"Bearer {settings.cron_secret}" if settings.cron_secret else None
+        if not expected or not hmac.compare_digest(authorization or "", expected):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
+        try:
+            return await pipeline.run("cron")
+        except PipelineBusyError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
     @app.get("/api/stats", response_model=Stats, tags=["ops"])
     def stats(session: DB):
@@ -169,7 +216,12 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
             next_run_at=job.next_run_time if job else None,
             pipeline_busy=pipeline.busy,
             enricher=pipeline.enricher.name,
-            scraper_source=settings.scraper_source,
+            scraper_source=f"{pipeline.scraper_engine} / {settings.scraper_source}",
+            schedule_label=settings.schedule_label
+            or (None if settings.schedule_enabled else "external cron"),
+            storage="ephemeral (per instance)"
+            if settings.ephemeral_database
+            else settings.database_url.split(":", 1)[0].split("+", 1)[0],
             alert_channel=pipeline.notifier.channel,
             alert_threshold=pipeline.alert_threshold,
         )

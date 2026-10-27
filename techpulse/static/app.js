@@ -33,8 +33,8 @@ function ago(iso) {
   return `${Math.round(s / 3600)}h ago`;
 }
 
-function until(iso) {
-  if (!iso) return "scheduler off";
+function until(iso, label) {
+  if (!iso) return label || "scheduler off";
   const m = Math.max(0, Math.round((new Date(iso) - Date.now()) / 60000));
   return m < 1 ? "in < 1 min" : `in ${m} min`;
 }
@@ -44,12 +44,13 @@ function renderStats(s) {
   $("#k-enriched").textContent = s.enriched_stories;
   $("#k-avg").textContent = s.avg_relevance ?? "–";
   $("#k-alerts").textContent = s.alerts_sent;
-  $("#k-next").textContent = until(s.next_run_at);
+  $("#k-next").textContent = until(s.next_run_at, s.schedule_label);
 
   $("#meta").innerHTML = [
     ["Enricher", s.enricher],
     ["Scraper", s.scraper_source],
     ["Alerts", `${s.alert_channel} · threshold ≥ ${s.alert_threshold}`],
+    ["Storage", s.storage],
     ["Last run", s.last_run ? `#${s.last_run.id} ${s.last_run.status} · ${ago(s.last_run.started_at)}` : "never"],
   ].map(([k, v]) => `<span class="chip">${k}: <b>${esc(v)}</b></span>`).join("");
 
@@ -153,9 +154,14 @@ async function refresh() {
 $("#run-btn").addEventListener("click", async () => {
   try {
     $("#run-btn").disabled = true;
-    await api("/api/runs", { method: "POST" });
+    const pill = $("#pipeline-status");
+    pill.dataset.state = "running";
+    pill.textContent = "Pipeline running…";
     toast("Pipeline started - scraping Hacker News…");
-    wasBusy = true;
+    const res = await api("/api/runs", { method: "POST" });
+    // Serverless deployments run inline and answer when the run has finished.
+    if (res.status !== "started") toast(res.message);
+    wasBusy = res.status === "started";
     await refresh();
     loadRuns();
   } catch (e) {

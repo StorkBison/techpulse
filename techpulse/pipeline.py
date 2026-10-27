@@ -32,12 +32,14 @@ class Pipeline:
         enricher: Enricher,
         notifier: Notifier,
         alert_threshold: int = 8,
+        scraper_engine: str = "custom",
     ):
         self.session_factory = session_factory
         self.scrape = scrape
         self.enricher = enricher
         self.notifier = notifier
         self.alert_threshold = alert_threshold
+        self.scraper_engine = scraper_engine
         self._lock = asyncio.Lock()
 
     @property
